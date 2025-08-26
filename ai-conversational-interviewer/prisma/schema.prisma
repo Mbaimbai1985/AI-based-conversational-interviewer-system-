@@ -1,0 +1,242 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          UserRole  @default(RECRUITER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // NextAuth.js fields
+  emailVerified DateTime?
+  image         String?
+  
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  interviews    Interview[]
+  
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model JobRole {
+  id          String @id @default(cuid())
+  title       String
+  department  String
+  description String? @db.Text
+  requirements String[] // Array of skill requirements
+  level       ExperienceLevel @default(MID)
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  interviews Interview[]
+  
+  @@map("job_roles")
+}
+
+model Candidate {
+  id               String @id @default(cuid())
+  email            String @unique
+  name             String?
+  phone            String?
+  resumeUrl        String?
+  linkedinUrl      String?
+  portfolioUrl     String?
+  currentTitle     String?
+  currentCompany   String?
+  yearsExperience  Int?
+  location         String?
+  expectedSalary   Int?
+  noticePeriod     String?
+  
+  // Profile data extracted from conversations
+  skills           String[] // Array of skills mentioned
+  experiences      Json[] // Array of experience objects
+  education        Json[] // Array of education objects
+  projects         Json[] // Array of project objects
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  // Relations
+  interviews       Interview[]
+  candidateProfiles CandidateProfile[]
+  
+  @@map("candidates")
+}
+
+model Interview {
+  id              String @id @default(cuid())
+  candidateId     String
+  jobRoleId       String
+  recruiterId     String
+  status          InterviewStatus @default(SCHEDULED)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  duration        Int? // Duration in minutes
+  
+  // Scoring and evaluation
+  overallScore    Float?
+  technicalScore  Float?
+  communicationScore Float?
+  culturalFitScore Float?
+  notes           String? @db.Text
+  
+  // Interview configuration
+  questionTemplate String? // Template used for questions
+  customQuestions  Json[] // Custom questions added by recruiter
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+  jobRole         JobRole @relation(fields: [jobRoleId], references: [id])
+  recruiter       User @relation(fields: [recruiterId], references: [id])
+  messages        Message[]
+  candidateProfile CandidateProfile?
+  
+  @@map("interviews")
+}
+
+model Message {
+  id          String @id @default(cuid())
+  interviewId String
+  sender      MessageSender
+  content     String @db.Text
+  messageType MessageType @default(TEXT)
+  metadata    Json? // Additional data like AI confidence, intent, etc.
+  timestamp   DateTime @default(now())
+  
+  // Relations
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  
+  @@map("messages")
+}
+
+model CandidateProfile {
+  id                    String @id @default(cuid())
+  candidateId           String
+  interviewId           String @unique
+  
+  // Extracted profile information
+  skills                Json[] // Structured skill data with proficiency levels
+  experiences           Json[] // Detailed experience timeline
+  education             Json[] // Education background
+  projects              Json[] // Project portfolio
+  achievements          Json[] // Notable achievements
+  
+  // Communication analysis
+  communicationStyle    String?
+  responseQuality       Float?
+  clarity               Float?
+  enthusiasm            Float?
+  
+  // Behavioral traits
+  problemSolving        Float?
+  teamwork              Float?
+  leadership            Float?
+  adaptability          Float?
+  
+  // Overall assessment
+  profileCompleteness   Float?
+  overallFit            Float?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  candidate             Candidate @relation(fields: [candidateId], references: [id])
+  interview             Interview @relation(fields: [interviewId], references: [id])
+  
+  @@map("candidate_profiles")
+}
+
+// Enums
+enum UserRole {
+  RECRUITER
+  ADMIN
+  CANDIDATE
+}
+
+enum ExperienceLevel {
+  ENTRY
+  MID
+  SENIOR
+  LEAD
+  EXECUTIVE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MessageSender {
+  AI
+  CANDIDATE
+  RECRUITER
+}
+
+enum MessageType {
+  TEXT
+  QUESTION
+  ANSWER
+  SYSTEM
+  SCORE_UPDATE
+}
