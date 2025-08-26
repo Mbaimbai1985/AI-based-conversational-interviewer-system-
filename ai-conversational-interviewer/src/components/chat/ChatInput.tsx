@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Send, Loader2 } from 'lucide-react'
@@ -11,20 +11,29 @@ interface ChatInputProps {
   disabled?: boolean
   placeholder?: string
   className?: string
+  onTypingStart?: () => void
+  onTypingStop?: () => void
 }
 
 export function ChatInput({ 
   onSendMessage, 
   disabled = false, 
   placeholder = "Type your message...",
-  className 
+  className,
+  onTypingStart,
+  onTypingStop
 }: ChatInputProps) {
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!message.trim() || disabled || isLoading) return
+
+    // Stop typing indicator when sending
+    stopTyping()
 
     setIsLoading(true)
     try {
@@ -44,11 +53,52 @@ export function ChatInput({
     }
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setMessage(value)
+
+    // Handle typing indicators
+    if (value.trim() && !isTyping) {
+      setIsTyping(true)
+      onTypingStart?.()
+    }
+
+    // Clear previous timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    // Set new timeout to stop typing indicator
+    typingTimeoutRef.current = setTimeout(() => {
+      stopTyping()
+    }, 1000) // Stop typing after 1 second of inactivity
+  }
+
+  const stopTyping = () => {
+    if (isTyping) {
+      setIsTyping(false)
+      onTypingStop?.()
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = null
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
+
   return (
     <form onSubmit={handleSubmit} className={cn("flex gap-2", className)}>
       <Input
         value={message}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={handleInputChange}
         onKeyPress={handleKeyPress}
         placeholder={placeholder}
         disabled={disabled || isLoading}

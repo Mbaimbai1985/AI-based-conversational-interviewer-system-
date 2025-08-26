@@ -1,20 +1,13 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@radix-ui/react-scroll-area'
-import { MessageSender, MessageType } from '@prisma/client'
-
-interface Message {
-  id: string
-  content: string
-  sender: MessageSender
-  messageType: MessageType
-  timestamp: Date
-  metadata?: any
-}
+import { useInterviewSocket } from '@/lib/socket/client'
+import { Badge } from '@/components/ui/badge'
+import { Users, Wifi, WifiOff } from 'lucide-react'
 
 interface ChatContainerProps {
   interviewId: string
@@ -31,9 +24,20 @@ export function ChatContainer({
   onMessageSend,
   className 
 }: ChatContainerProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  const {
+    connected,
+    connecting,
+    error,
+    messages,
+    typingUsers,
+    aiTyping,
+    connectedUsers,
+    sendMessage,
+    startTyping,
+    stopTyping,
+  } = useInterviewSocket(interviewId)
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -44,87 +48,15 @@ export function ChatContainer({
     scrollToBottom()
   }, [messages])
 
-  // Load initial messages
-  useEffect(() => {
-    loadMessages()
-  }, [interviewId])
-
-  const loadMessages = async () => {
-    try {
-      const response = await fetch(`/api/interviews/${interviewId}/messages`)
-      if (response.ok) {
-        const data = await response.json()
-        setMessages(data.messages || [])
-      }
-    } catch (error) {
-      console.error('Error loading messages:', error)
-    }
-  }
-
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return
 
-    const userMessage: Message = {
-      id: `temp-${Date.now()}`,
-      content,
-      sender: 'CANDIDATE',
-      messageType: 'TEXT',
-      timestamp: new Date(),
-    }
-
-    // Add user message immediately
-    setMessages(prev => [...prev, userMessage])
-    setIsLoading(true)
-
     try {
-      const response = await fetch(`/api/interviews/${interviewId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content,
-          sender: 'CANDIDATE',
-          messageType: 'TEXT',
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        
-        // Replace temp message with actual message from server
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === userMessage.id ? data.message : msg
-          )
-        )
-
-        // If there's an AI response, add it
-        if (data.aiResponse) {
-          const aiMessage: Message = {
-            id: data.aiResponse.id,
-            content: data.aiResponse.content,
-            sender: 'AI',
-            messageType: data.aiResponse.messageType || 'TEXT',
-            timestamp: new Date(data.aiResponse.timestamp),
-            metadata: data.aiResponse.metadata,
-          }
-          setMessages(prev => [...prev, aiMessage])
-        }
-
-        // Call the callback if provided
-        onMessageSend?.(content)
-      } else {
-        // Remove temp message on error
-        setMessages(prev => prev.filter(msg => msg.id !== userMessage.id))
-        throw new Error('Failed to send message')
-      }
+      await sendMessage(content)
+      onMessageSend?.(content)
     } catch (error) {
       console.error('Error sending message:', error)
-      // Remove temp message on error
-      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id))
-    } finally {
-      setIsLoading(false)
+      // Handle error - could show a toast notification
     }
   }
 
@@ -135,12 +67,48 @@ export function ChatContainer({
           <span>
             Interview {candidateName && `with ${candidateName}`}
           </span>
-          {jobTitle && (
-            <span className="text-sm font-normal text-muted-foreground">
-              {jobTitle}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {jobTitle && (
+              <span className="text-sm font-normal text-muted-foreground">
+                {jobTitle}
+              </span>
+            )}
+            
+            {/* Connection Status */}
+            <div className="flex items-center gap-2">
+              {connected ? (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  <Wifi className="w-3 h-3 mr-1" />
+                  Connected
+                </Badge>
+              ) : connecting ? (
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                  Connecting...
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <WifiOff className="w-3 h-3 mr-1" />
+                  Disconnected
+                </Badge>
+              )}
+              
+              {/* Connected Users Count */}
+              {connectedUsers.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  <Users className="w-3 h-3 mr-1" />
+                  {connectedUsers.length}
+                </Badge>
+              )}
+            </div>
+          </div>
         </CardTitle>
+        
+        {/* Error Display */}
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+            Connection Error: {error}
+          </div>
+        )}
       </CardHeader>
       
       <CardContent className="flex flex-col h-[600px]">
@@ -149,7 +117,13 @@ export function ChatContainer({
           <div className="space-y-4">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-muted-foreground">
-                Start the conversation by typing a message below.
+                {connecting ? (
+                  "Connecting to interview..."
+                ) : connected ? (
+                  "Start the conversation by typing a message below."
+                ) : (
+                  "Please wait while we establish connection..."
+                )}
               </div>
             ) : (
               messages.map((message) => (
@@ -157,22 +131,31 @@ export function ChatContainer({
                   key={message.id}
                   id={message.id}
                   content={message.content}
-                  sender={message.sender}
-                  messageType={message.messageType}
-                  timestamp={message.timestamp}
+                  sender={message.sender as any}
+                  messageType={message.messageType as any}
+                  timestamp={new Date(message.timestamp)}
                   metadata={message.metadata}
                 />
               ))
             )}
-            {isLoading && (
+            
+            {/* Typing Indicators */}
+            {aiTyping && (
               <ChatMessage
-                id="loading"
+                id="ai-typing"
                 content="AI is thinking..."
                 sender="AI"
                 messageType="SYSTEM"
                 timestamp={new Date()}
               />
             )}
+            
+            {typingUsers.length > 0 && (
+              <div className="text-sm text-muted-foreground italic">
+                {typingUsers.length === 1 ? 'Someone is' : `${typingUsers.length} people are`} typing...
+              </div>
+            )}
+            
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
@@ -181,8 +164,16 @@ export function ChatContainer({
         <div className="mt-4 pt-4 border-t">
           <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={isLoading}
-            placeholder="Type your response..."
+            disabled={!connected || connecting}
+            placeholder={
+              connected 
+                ? "Type your response..." 
+                : connecting 
+                ? "Connecting..." 
+                : "Disconnected - check your connection"
+            }
+            onTypingStart={startTyping}
+            onTypingStop={stopTyping}
           />
         </div>
       </CardContent>

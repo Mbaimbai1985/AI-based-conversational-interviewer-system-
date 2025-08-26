@@ -10,12 +10,13 @@ A modern, AI-powered interviewing platform that conducts natural conversations w
 - **Authentication**: NextAuth.js with Google OAuth
 - **AI Integration**: OpenAI GPT-4 for conversational interviews
 - **Real-time Chat**: Interactive chat interface for candidates
+- **WebSocket Communication**: Production-grade Socket.io integration
 - **Candidate Profiles**: Automatic skill extraction and profile building
 - **Recruiter Dashboard**: Interview management and candidate overview
 - **Responsive Design**: Mobile and desktop optimized
+- **Production Ready**: Full deployment guide and scaling architecture
 
 ### Coming Soon (Phase 2-8)
-- WebSocket real-time communication
 - Advanced ML-based scoring algorithms
 - Bias detection and mitigation
 - ATS integrations (Workday, Greenhouse, BambooHR)
@@ -99,10 +100,14 @@ npm run db:seed
 ### 4. Start Development Server
 
 ```bash
+# Start with WebSocket support (recommended)
 npm run dev
+
+# Or start standard Next.js dev server (no WebSockets)
+npm run dev:next
 ```
 
-The application will be available at `http://localhost:3000`.
+The application will be available at `http://localhost:3000` with full WebSocket real-time functionality.
 
 ## 📖 Usage
 
