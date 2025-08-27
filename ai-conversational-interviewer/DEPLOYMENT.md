@@ -70,7 +70,7 @@ cd ai-conversational-interviewer
 npm ci --production=false
 
 # Set up environment variables
-cp .env.example .env.production
+cp .env .env.production
 nano .env.production
 ```
 

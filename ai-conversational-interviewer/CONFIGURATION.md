@@ -21,7 +21,7 @@ For a basic development setup, you only need these essential configurations:
 
 ```bash
 # Copy the example environment file
-cp .env.example .env
+cp .env .env
 
 # Edit the .env file with your configuration
 nano .env
